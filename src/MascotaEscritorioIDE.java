@@ -21,6 +21,8 @@ import java.util.Random;
 import javax.swing.JColorChooser;
 import javax.swing.JTable;
 import java.awt.FontMetrics;
+import java.util.Collections;
+import java.util.function.Supplier;
 
 public class MascotaEscritorioIDE extends JFrame {
 
@@ -29,6 +31,10 @@ public class MascotaEscritorioIDE extends JFrame {
     private JComboBox<String> comboMascota;
     private JTextArea vistaScriptSeleccionado;
     private JLabel estadoLabel;
+    private final List<ScriptSprite> scriptsCatalog = new ArrayList<>();
+    private DefaultListModel<String> modeloListaScripts;
+    private JList<String> listaScripts;
+    private PreviewMascotaPanel canvasPreview;
 
     private PetPreviewWindow petWindow;
 
@@ -87,6 +93,10 @@ public class MascotaEscritorioIDE extends JFrame {
         btnEliminar.addActionListener(e -> eliminarAccion());
 
         add(root);
+    }
+
+    private BlockCanvasPanel crearLienzoAccion() {
+        return new BlockCanvasPanel(this::obtenerNombresScripts);
     }
 
     private JMenuBar crearMenu() {
@@ -267,13 +277,13 @@ public class MascotaEscritorioIDE extends JFrame {
         JPanel panel = new JPanel(new BorderLayout());
         panel.setBorder(BorderFactory.createTitledBorder("Vista previa"));
 
-        DefaultListModel<String> listModel = new DefaultListModel<>();
-        JList<String> listaScripts = new JList<>(listModel);
+        modeloListaScripts = new DefaultListModel<>();
+        listaScripts = new JList<>(modeloListaScripts);
         JScrollPane scrollLista = new JScrollPane(listaScripts);
         scrollLista.setBorder(BorderFactory.createTitledBorder("Scripts creados"));
 
-        PreviewMascotaPanel canvas = new PreviewMascotaPanel();
-        canvas.setPreferredSize(new Dimension(300, 240));
+        canvasPreview = new PreviewMascotaPanel();
+        canvasPreview.setPreferredSize(new Dimension(300, 240));
 
         vistaScriptSeleccionado = new JTextArea();
         vistaScriptSeleccionado.setEditable(false);
@@ -282,8 +292,6 @@ public class MascotaEscritorioIDE extends JFrame {
         JScrollPane scrollVista = new JScrollPane(vistaScriptSeleccionado);
         scrollVista.setPreferredSize(new Dimension(180, 0));
 
-        List<ScriptSprite> scripts = new ArrayList<>();
-
         JPanel barra = new JPanel(new FlowLayout(FlowLayout.LEFT));
         JButton btnCrearScript = new JButton("Crear script");
         JButton btnEliminarScript = new JButton("Eliminar script");
@@ -291,7 +299,7 @@ public class MascotaEscritorioIDE extends JFrame {
         barra.add(btnEliminarScript);
 
         JPanel centro = new JPanel(new BorderLayout());
-        centro.add(canvas, BorderLayout.CENTER);
+        centro.add(canvasPreview, BorderLayout.CENTER);
         centro.add(scrollVista, BorderLayout.EAST);
 
         panel.add(barra, BorderLayout.NORTH);
@@ -303,11 +311,11 @@ public class MascotaEscritorioIDE extends JFrame {
             dialog.setVisible(true);
             ScriptSprite nuevo = dialog.getResult();
             if (nuevo != null) {
-                scripts.add(nuevo);
-                listModel.addElement(nuevo.getNombre());
-                listaScripts.setSelectedIndex(listModel.size() - 1);
-                canvas.setPixelData(nuevo.getPixels());
-                canvas.repaint();
+                scriptsCatalog.add(nuevo);
+                modeloListaScripts.addElement(nuevo.getNombre());
+                listaScripts.setSelectedIndex(modeloListaScripts.size() - 1);
+                canvasPreview.setPixelData(nuevo.getPixels());
+                canvasPreview.repaint();
             }
         });
 
@@ -317,27 +325,27 @@ public class MascotaEscritorioIDE extends JFrame {
                 JOptionPane.showMessageDialog(panel, "Selecciona un script de la lista.", "Eliminar script", JOptionPane.INFORMATION_MESSAGE);
                 return;
             }
-            scripts.remove(idx);
-            listModel.remove(idx);
-            if (!scripts.isEmpty()) {
-                int nuevoIdx = Math.min(idx, scripts.size() - 1);
+            scriptsCatalog.remove(idx);
+            modeloListaScripts.remove(idx);
+            if (!scriptsCatalog.isEmpty()) {
+                int nuevoIdx = Math.min(idx, scriptsCatalog.size() - 1);
                 listaScripts.setSelectedIndex(nuevoIdx);
-                canvas.setPixelData(scripts.get(nuevoIdx).getPixels());
+                canvasPreview.setPixelData(scriptsCatalog.get(nuevoIdx).getPixels());
             } else {
-                canvas.setPixelData(null);
+                canvasPreview.setPixelData(null);
             }
-            canvas.repaint();
+            canvasPreview.repaint();
         });
 
         listaScripts.addListSelectionListener(e -> {
             if (!e.getValueIsAdjusting()) {
                 int idx = listaScripts.getSelectedIndex();
-                if (idx >= 0 && idx < scripts.size()) {
-                    canvas.setPixelData(scripts.get(idx).getPixels());
+                if (idx >= 0 && idx < scriptsCatalog.size()) {
+                    canvasPreview.setPixelData(scriptsCatalog.get(idx).getPixels());
                 } else {
-                    canvas.setPixelData(null);
+                    canvasPreview.setPixelData(null);
                 }
-                canvas.repaint();
+                canvasPreview.repaint();
             }
         });
 
@@ -376,7 +384,7 @@ public class MascotaEscritorioIDE extends JFrame {
             return;
         }
 
-        BlockCanvasPanel canvas = new BlockCanvasPanel();
+        BlockCanvasPanel canvas = crearLienzoAccion();
         tabsAcciones.addTab(nombre, canvas);
         tabsAcciones.setSelectedComponent(canvas);
         modeloTablaAcciones.addRow(new Object[]{Boolean.TRUE, nombre, Integer.valueOf(1)});
@@ -418,6 +426,14 @@ public class MascotaEscritorioIDE extends JFrame {
         vistaScriptSeleccionado.setText(sb.toString());
     }
 
+    private List<String> obtenerNombresScripts() {
+        List<String> nombres = new ArrayList<>();
+        for (ScriptSprite s : scriptsCatalog) {
+            nombres.add(s.getNombre());
+        }
+        return nombres;
+    }
+
     private BlockCanvasPanel getCanvasSeleccionado() {
         Component c = tabsAcciones.getSelectedComponent();
         if (c instanceof BlockCanvasPanel) {
@@ -426,10 +442,49 @@ public class MascotaEscritorioIDE extends JFrame {
         return null;
     }
 
+    private BlockCanvasPanel buscarCanvasPorNombre(String nombre) {
+        for (int i = 0; i < tabsAcciones.getTabCount(); i++) {
+            if (tabsAcciones.getTitleAt(i).equals(nombre)) {
+                Component c = tabsAcciones.getComponentAt(i);
+                if (c instanceof BlockCanvasPanel) {
+                    return (BlockCanvasPanel) c;
+                }
+            }
+        }
+        return null;
+    }
+
+    private List<BlockNodeData> clonarBloques(List<BlockNodeData> origen) {
+        List<BlockNodeData> copia = new ArrayList<>();
+        for (BlockNodeData d : origen) {
+            copia.add(new BlockNodeData(d.baseName, d.paramSummary, d.x, d.y, d.width, d.height, d.fillColor));
+        }
+        return copia;
+    }
+
+    private List<RandomActionEntry> construirPoolAleatorio() {
+        List<RandomActionEntry> pool = new ArrayList<>();
+        for (int i = 0; i < modeloTablaAcciones.getRowCount(); i++) {
+            Boolean usar = (Boolean) modeloTablaAcciones.getValueAt(i, 0);
+            String nombre = (String) modeloTablaAcciones.getValueAt(i, 1);
+            Integer peso = (Integer) modeloTablaAcciones.getValueAt(i, 2);
+            if (usar != null && usar && nombre != null) {
+                BlockCanvasPanel canvas = buscarCanvasPorNombre(nombre);
+                if (canvas != null && !canvas.exportData().isEmpty()) {
+                    pool.add(new RandomActionEntry(nombre, peso == null ? 1 : Math.max(1, peso), clonarBloques(canvas.exportData())));
+                }
+            }
+        }
+        return pool;
+    }
+
     private void lanzarVistaPrevia(boolean flotante) {
         BlockCanvasPanel canvas = getCanvasSeleccionado();
-        if (canvas == null || canvas.exportData().isEmpty()) {
-            JOptionPane.showMessageDialog(this, "Necesitas al menos un bloque en la acción seleccionada.",
+        List<BlockNodeData> accionPrincipal = canvas == null ? Collections.emptyList() : canvas.exportData();
+        List<RandomActionEntry> pool = construirPoolAleatorio();
+
+        if ((accionPrincipal == null || accionPrincipal.isEmpty()) && pool.isEmpty()) {
+            JOptionPane.showMessageDialog(this, "Necesitas al menos un bloque en la acción seleccionada o acciones aleatorias activas.",
                     "Sin acción", JOptionPane.WARNING_MESSAGE);
             return;
         }
@@ -440,8 +495,9 @@ public class MascotaEscritorioIDE extends JFrame {
 
         petWindow = new PetPreviewWindow(flotante);
         petWindow.setVisible(true);
-        petWindow.runScript(canvas.exportData());
-        estadoLabel.setText("Ejecutando " + tabsAcciones.getTitleAt(tabsAcciones.getSelectedIndex()) +
+        petWindow.runScript(accionPrincipal, pool);
+        String nombre = canvas != null ? tabsAcciones.getTitleAt(tabsAcciones.getSelectedIndex()) : "pool aleatorio";
+        estadoLabel.setText("Ejecutando " + nombre +
                 (flotante ? " en escritorio" : " en ventana"));
     }
 
@@ -457,6 +513,14 @@ public class MascotaEscritorioIDE extends JFrame {
         tabsAcciones.removeAll();
         modeloTablaAcciones.setRowCount(0);
         vistaScriptSeleccionado.setText("");
+        scriptsCatalog.clear();
+        if (modeloListaScripts != null) {
+            modeloListaScripts.clear();
+        }
+        if (canvasPreview != null) {
+            canvasPreview.setPixelData(null);
+            canvasPreview.repaint();
+        }
         detenerMascota();
     }
 
@@ -498,7 +562,7 @@ public class MascotaEscritorioIDE extends JFrame {
                         comboMascota.setSelectedItem(line.substring(4));
                     } else if (line.startsWith("SCRIPT|")) {
                         String nombre = line.substring(7);
-                        actual = new BlockCanvasPanel();
+                        actual = crearLienzoAccion();
                         tabsAcciones.addTab(nombre, actual);
                         modeloTablaAcciones.addRow(new Object[]{Boolean.TRUE, nombre, Integer.valueOf(1)});
                     } else if (line.startsWith("BLOCK|") && actual != null) {
@@ -565,6 +629,18 @@ public class MascotaEscritorioIDE extends JFrame {
             this.width = width;
             this.height = height;
             this.fillColor = fillColor;
+        }
+    }
+
+    private static class RandomActionEntry {
+        final String nombre;
+        final int peso;
+        final List<BlockNodeData> bloques;
+
+        RandomActionEntry(String nombre, int peso, List<BlockNodeData> bloques) {
+            this.nombre = nombre;
+            this.peso = peso;
+            this.bloques = bloques;
         }
     }
 
@@ -808,8 +884,10 @@ public class MascotaEscritorioIDE extends JFrame {
         private BlockNodeData dragging;
         private int offsetX;
         private int offsetY;
+        private final Supplier<List<String>> scriptNamesSupplier;
 
-        BlockCanvasPanel() {
+        BlockCanvasPanel(Supplier<List<String>> scriptNamesSupplier) {
+            this.scriptNamesSupplier = scriptNamesSupplier;
             setBackground(new Color(250, 250, 250));
             setBorder(BorderFactory.createLineBorder(new Color(200, 200, 200)));
             setPreferredSize(new Dimension(520, 460));
@@ -846,7 +924,8 @@ public class MascotaEscritorioIDE extends JFrame {
                     if (e.getClickCount() == 2) {
                         BlockNodeData n = findBlock(e.getX(), e.getY());
                         if (n != null) {
-                            BlockEditDialog dialog = new BlockEditDialog(SwingUtilities.getWindowAncestor(BlockCanvasPanel.this), n);
+                            List<String> scriptsDisponibles = scriptNamesSupplier == null ? Collections.emptyList() : scriptNamesSupplier.get();
+                            BlockEditDialog dialog = new BlockEditDialog(SwingUtilities.getWindowAncestor(BlockCanvasPanel.this), n, scriptsDisponibles);
                             dialog.setVisible(true);
                             if (dialog.getParamSummary() != null) {
                                 int idx = blocks.indexOf(n);
@@ -953,11 +1032,13 @@ public class MascotaEscritorioIDE extends JFrame {
     private static class BlockEditDialog extends JDialog {
         private String paramSummary;
         private final String blockName;
+        private final List<String> scriptsDisponibles;
 
-        BlockEditDialog(Window owner, BlockNodeData data) {
+        BlockEditDialog(Window owner, BlockNodeData data, List<String> scriptsDisponibles) {
             super(owner, "Editar bloque: " + data.baseName, ModalityType.APPLICATION_MODAL);
             this.blockName = data.baseName;
             this.paramSummary = data.paramSummary;
+            this.scriptsDisponibles = scriptsDisponibles;
             initUI();
         }
 
@@ -969,6 +1050,13 @@ public class MascotaEscritorioIDE extends JFrame {
             gbc.gridy = 0;
             gbc.insets = new Insets(4, 4, 4, 4);
             gbc.anchor = GridBagConstraints.WEST;
+
+            JPanel sur = new JPanel(new FlowLayout(FlowLayout.RIGHT));
+            JButton ok = new JButton("Guardar");
+            JButton cancel = new JButton("Cancelar");
+            sur.add(ok);
+            sur.add(cancel);
+            add(sur, BorderLayout.SOUTH);
 
             List<JTextField> campos = new ArrayList<>();
             List<String> nombres = new ArrayList<>();
@@ -986,22 +1074,119 @@ public class MascotaEscritorioIDE extends JFrame {
                 campos.add(t1); nombres.add("dir");
                 campos.add(t2); nombres.add("vel");
             } else if ("reproducir animación".equals(blockName)) {
-                JLabel l1 = new JLabel("Nombre animación:");
-                JTextField t1 = new JTextField(12);
-                centro.add(l1, gbc);
-                gbc.gridx = 1; centro.add(t1, gbc);
-                campos.add(t1); nombres.add("anim");
+                gbc.gridwidth = 2;
+                JLabel lTitulo = new JLabel("Selecciona scripts y orden:");
+                centro.add(lTitulo, gbc);
+                gbc.gridy++;
+
+                DefaultListModel<String> modeloDisponibles = new DefaultListModel<>();
+                for (String s : scriptsDisponibles) modeloDisponibles.addElement(s);
+                JList<String> listaDisponibles = new JList<>(modeloDisponibles);
+                listaDisponibles.setBorder(BorderFactory.createTitledBorder("Scripts"));
+
+                DefaultListModel<String> modeloSecuencia = new DefaultListModel<>();
+                String ordenPrevio = extraerValor(paramSummary, "orden");
+                if (ordenPrevio != null) {
+                    for (String s : ordenPrevio.split(">")) {
+                        if (!s.trim().isEmpty()) modeloSecuencia.addElement(s.trim());
+                    }
+                }
+                JList<String> listaSecuencia = new JList<>(modeloSecuencia);
+                listaSecuencia.setBorder(BorderFactory.createTitledBorder("Orden"));
+
+                JPanel controles = new JPanel();
+                controles.setLayout(new BoxLayout(controles, BoxLayout.Y_AXIS));
+                JButton btnAgregar = new JButton("Añadir >");
+                JButton btnRemover = new JButton("< Quitar");
+                JButton btnSubir = new JButton("Subir");
+                JButton btnBajar = new JButton("Bajar");
+                controles.add(btnAgregar);
+                controles.add(btnRemover);
+                controles.add(Box.createVerticalStrut(8));
+                controles.add(btnSubir);
+                controles.add(btnBajar);
+
+                gbc.gridwidth = 1;
+                gbc.gridx = 0; centro.add(new JScrollPane(listaDisponibles), gbc);
+                gbc.gridx = 1; centro.add(controles, gbc);
+                gbc.gridx = 2; centro.add(new JScrollPane(listaSecuencia), gbc);
+                gbc.gridy++;
+                gbc.gridx = 0;
+                gbc.gridwidth = 3;
+
+                JPanel tiempos = new JPanel(new GridLayout(2, 2, 6, 4));
+                tiempos.setBorder(BorderFactory.createTitledBorder("Intervalos"));
+                JTextField txtIntervalo = new JTextField(8);
+                JTextField txtDuracion = new JTextField(8);
+                txtIntervalo.setText(defaultOrParam(paramSummary, "intervaloMs", "500"));
+                txtDuracion.setText(defaultOrParam(paramSummary, "duracionMs", "4000"));
+                tiempos.add(new JLabel("Intervalo ms:"));
+                tiempos.add(txtIntervalo);
+                tiempos.add(new JLabel("Duración bucle ms:"));
+                tiempos.add(txtDuracion);
+                centro.add(tiempos, gbc);
+
+                add(centro, BorderLayout.CENTER);
+
+                btnAgregar.addActionListener(e -> {
+                    for (String sel : listaDisponibles.getSelectedValuesList()) {
+                        modeloSecuencia.addElement(sel);
+                    }
+                });
+                btnRemover.addActionListener(e -> {
+                    for (String sel : listaSecuencia.getSelectedValuesList()) {
+                        modeloSecuencia.removeElement(sel);
+                    }
+                });
+                btnSubir.addActionListener(e -> {
+                    int idx = listaSecuencia.getSelectedIndex();
+                    if (idx > 0) {
+                        String val = modeloSecuencia.remove(idx);
+                        modeloSecuencia.add(idx - 1, val);
+                        listaSecuencia.setSelectedIndex(idx - 1);
+                    }
+                });
+                btnBajar.addActionListener(e -> {
+                    int idx = listaSecuencia.getSelectedIndex();
+                    if (idx >= 0 && idx < modeloSecuencia.size() - 1) {
+                        String val = modeloSecuencia.remove(idx);
+                        modeloSecuencia.add(idx + 1, val);
+                        listaSecuencia.setSelectedIndex(idx + 1);
+                    }
+                });
+
+                campos.add(txtIntervalo); nombres.add("intervaloMs");
+                campos.add(txtDuracion); nombres.add("duracionMs");
+
+                campos.add(new JTextField() {{ setName("orden"); }});
+                nombres.add("orden");
+
+                add(new JLabel()); // placeholder to keep focus order
+
+                ok.addActionListener(event -> {
+                    String orden = String.join(">", Collections.list(modeloSecuencia.elements()));
+                    String intervaloVal = txtIntervalo.getText().trim();
+                    String duracionVal = txtDuracion.getText().trim();
+                    StringBuilder sb = new StringBuilder();
+                    if (!orden.isEmpty()) sb.append("orden=").append(orden);
+                    if (!intervaloVal.isEmpty()) {
+                        if (sb.length() > 0) sb.append(", ");
+                        sb.append("intervaloMs=").append(intervaloVal);
+                    }
+                    if (!duracionVal.isEmpty()) {
+                        if (sb.length() > 0) sb.append(", ");
+                        sb.append("duracionMs=").append(duracionVal);
+                    }
+                    paramSummary = sb.toString();
+                    dispose();
+                });
+                cancel.addActionListener(event -> dispose());
+                pack();
+                setLocationRelativeTo(getOwner());
+                return;
             }
 
             add(centro, BorderLayout.CENTER);
-
-            JPanel sur = new JPanel(new FlowLayout(FlowLayout.RIGHT));
-            JButton ok = new JButton("Guardar");
-            JButton cancel = new JButton("Cancelar");
-            sur.add(ok);
-            sur.add(cancel);
-            add(sur, BorderLayout.SOUTH);
-
             ok.addActionListener(e -> {
                 if (!campos.isEmpty()) {
                     StringBuilder sb = new StringBuilder();
@@ -1024,6 +1209,23 @@ public class MascotaEscritorioIDE extends JFrame {
         public String getParamSummary() {
             return paramSummary;
         }
+
+        private String extraerValor(String resumen, String clave) {
+            if (resumen == null) return null;
+            String[] partes = resumen.split(",");
+            for (String p : partes) {
+                String[] kv = p.trim().split("=");
+                if (kv.length == 2 && kv[0].trim().equalsIgnoreCase(clave)) {
+                    return kv[1].trim();
+                }
+            }
+            return null;
+        }
+
+        private String defaultOrParam(String resumen, String clave, String porDefecto) {
+            String val = extraerValor(resumen, clave);
+            return val == null || val.isEmpty() ? porDefecto : val;
+        }
     }
 
     private static class PetPreviewWindow extends JWindow {
@@ -1035,6 +1237,10 @@ public class MascotaEscritorioIDE extends JFrame {
         private double velY = 0;
         private final Random random = new Random();
         private List<BlockNodeData> actions = new ArrayList<>();
+        private List<BlockNodeData> accionPrincipal = new ArrayList<>();
+        private List<RandomActionEntry> randomPool = new ArrayList<>();
+        private long inicioAccionMs;
+        private long duracionActualMs = 4000;
         private Point mouse = new Point(0, 0);
 
         PetPreviewWindow(boolean transparent) {
@@ -1054,9 +1260,15 @@ public class MascotaEscritorioIDE extends JFrame {
             timer = new Timer(30, e -> tick());
         }
 
-        void runScript(List<BlockNodeData> data) {
-            this.actions = data;
-            parseActions();
+        void runScript(List<BlockNodeData> data, List<RandomActionEntry> pool) {
+            this.accionPrincipal = data == null ? new ArrayList<>() : new ArrayList<>(data);
+            this.randomPool = pool == null ? new ArrayList<>() : pool;
+            if (!accionPrincipal.isEmpty()) {
+                this.actions = accionPrincipal;
+                parseActions();
+            } else {
+                activarAleatoria();
+            }
             timer.start();
         }
 
@@ -1082,6 +1294,45 @@ public class MascotaEscritorioIDE extends JFrame {
                         break;
                 }
             }
+            duracionActualMs = leerDuracionAccion(actions);
+            inicioAccionMs = System.currentTimeMillis();
+        }
+
+        private void activarAleatoria() {
+            if (randomPool.isEmpty()) {
+                actions = new ArrayList<>();
+                return;
+            }
+            int totalPeso = randomPool.stream().mapToInt(r -> r.peso).sum();
+            int pick = random.nextInt(Math.max(1, totalPeso));
+            RandomActionEntry elegido = randomPool.get(0);
+            int acumulado = 0;
+            for (RandomActionEntry entry : randomPool) {
+                acumulado += entry.peso;
+                if (pick < acumulado) {
+                    elegido = entry;
+                    break;
+                }
+            }
+            actions = clonarAccion(elegido.bloques);
+            parseActions();
+        }
+
+        private List<BlockNodeData> clonarAccion(List<BlockNodeData> origen) {
+            List<BlockNodeData> copia = new ArrayList<>();
+            for (BlockNodeData d : origen) {
+                copia.add(new BlockNodeData(d.baseName, d.paramSummary, d.x, d.y, d.width, d.height, d.fillColor));
+            }
+            return copia;
+        }
+
+        private long leerDuracionAccion(List<BlockNodeData> datos) {
+            for (BlockNodeData n : datos) {
+                if ("reproducir animación".equals(n.baseName)) {
+                    return (long) parseParam(n.paramSummary, "duracionMs", 4000);
+                }
+            }
+            return 4000;
         }
 
         private double parseParam(String paramSummary, String key, double def) {
@@ -1122,6 +1373,13 @@ public class MascotaEscritorioIDE extends JFrame {
                         break;
                     default:
                         break;
+                }
+            }
+
+            if (accionPrincipal.isEmpty() && !randomPool.isEmpty()) {
+                long transcurrido = System.currentTimeMillis() - inicioAccionMs;
+                if (transcurrido >= duracionActualMs) {
+                    activarAleatoria();
                 }
             }
             x += velX;
