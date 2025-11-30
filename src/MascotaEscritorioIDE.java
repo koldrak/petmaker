@@ -7,6 +7,7 @@ import java.awt.datatransfer.StringSelection;
 import java.awt.datatransfer.Transferable;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
+import java.util.LinkedHashMap;
 import java.io.BufferedReader;
 import java.io.BufferedWriter;
 import java.io.File;
@@ -14,10 +15,12 @@ import java.io.FileReader;
 import java.io.FileWriter;
 import java.io.IOException;
 import java.util.ArrayList;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Random;
+import javax.swing.JColorChooser;
+import javax.swing.JTable;
+import java.awt.FontMetrics;
 
 public class MascotaEscritorioIDE extends JFrame {
 
@@ -72,6 +75,11 @@ public class MascotaEscritorioIDE extends JFrame {
                 if (columnIndex == 0) return Boolean.class;
                 if (columnIndex == 2) return Integer.class;
                 return String.class;
+            }
+
+            @Override
+            public boolean isCellEditable(int row, int column) {
+                return column == 0 || column == 2;
             }
         };
 
@@ -201,27 +209,161 @@ public class MascotaEscritorioIDE extends JFrame {
         JScrollPane scrollBloq = new JScrollPane(listaBloques);
         JSplitPane split = new JSplitPane(JSplitPane.VERTICAL_SPLIT, scrollCat, scrollBloq);
         split.setResizeWeight(0.35);
-        panel.add(split, BorderLayout.CENTER);
+
+        // ---- Zona inferior: variables ----
+        DefaultListModel<String> modeloVariables = new DefaultListModel<>();
+        JList<String> listaVariables = new JList<>(modeloVariables);
+        listaVariables.setBorder(BorderFactory.createTitledBorder("Variables"));
+        JScrollPane scrollVariables = new JScrollPane(listaVariables);
+        scrollVariables.setPreferredSize(new Dimension(0, 120));
+
+        JButton btnCrearVariable = new JButton("Crear variable");
+        btnCrearVariable.addActionListener(e -> {
+            String nombre = JOptionPane.showInputDialog(panel, "Nombre de la nueva variable:", "Crear variable", JOptionPane.PLAIN_MESSAGE);
+            if (nombre == null) return;
+            nombre = nombre.trim();
+            if (nombre.isEmpty()) {
+                JOptionPane.showMessageDialog(panel, "El nombre de la variable no puede estar vacío.", "Error", JOptionPane.WARNING_MESSAGE);
+                return;
+            }
+            for (int i = 0; i < modeloVariables.size(); i++) {
+                if (modeloVariables.getElementAt(i).equals(nombre)) {
+                    JOptionPane.showMessageDialog(panel, "Ya existe una variable con ese nombre.", "Error", JOptionPane.WARNING_MESSAGE);
+                    return;
+                }
+            }
+            modeloVariables.addElement(nombre);
+        });
+
+        JPanel panelVariables = new JPanel(new BorderLayout());
+        panelVariables.add(btnCrearVariable, BorderLayout.NORTH);
+        panelVariables.add(scrollVariables, BorderLayout.CENTER);
+
+        JPanel contenedorCentro = new JPanel(new BorderLayout());
+        contenedorCentro.add(split, BorderLayout.CENTER);
+        contenedorCentro.add(panelVariables, BorderLayout.SOUTH);
+
+        panel.add(contenedorCentro, BorderLayout.CENTER);
 
         return panel;
     }
 
     private JPanel crearPanelDerecho() {
+        JPanel contenedor = new JPanel(new BorderLayout());
+        contenedor.setPreferredSize(new Dimension(360, 0));
+        contenedor.setBorder(BorderFactory.createEmptyBorder());
+
+        JPanel panelPreview = crearPanelPreview();
+        JPanel panelAnimaciones = crearPanelAnimaciones();
+
+        JSplitPane split = new JSplitPane(JSplitPane.VERTICAL_SPLIT, panelPreview, panelAnimaciones);
+        split.setResizeWeight(0.55);
+
+        contenedor.add(split, BorderLayout.CENTER);
+        return contenedor;
+    }
+
+    private JPanel crearPanelPreview() {
         JPanel panel = new JPanel(new BorderLayout());
-        panel.setPreferredSize(new Dimension(320, 0));
-        panel.setBorder(BorderFactory.createTitledBorder("Vista previa y acciones aleatorias"));
+        panel.setBorder(BorderFactory.createTitledBorder("Vista previa"));
+
+        DefaultListModel<String> listModel = new DefaultListModel<>();
+        JList<String> listaScripts = new JList<>(listModel);
+        JScrollPane scrollLista = new JScrollPane(listaScripts);
+        scrollLista.setBorder(BorderFactory.createTitledBorder("Scripts creados"));
+
+        PreviewMascotaPanel canvas = new PreviewMascotaPanel();
+        canvas.setPreferredSize(new Dimension(300, 240));
 
         vistaScriptSeleccionado = new JTextArea();
         vistaScriptSeleccionado.setEditable(false);
         vistaScriptSeleccionado.setLineWrap(true);
         vistaScriptSeleccionado.setBorder(BorderFactory.createTitledBorder("Bloques de la acción"));
+        JScrollPane scrollVista = new JScrollPane(vistaScriptSeleccionado);
+        scrollVista.setPreferredSize(new Dimension(180, 0));
+
+        List<ScriptSprite> scripts = new ArrayList<>();
+
+        JPanel barra = new JPanel(new FlowLayout(FlowLayout.LEFT));
+        JButton btnCrearScript = new JButton("Crear script");
+        JButton btnEliminarScript = new JButton("Eliminar script");
+        barra.add(btnCrearScript);
+        barra.add(btnEliminarScript);
+
+        JPanel centro = new JPanel(new BorderLayout());
+        centro.add(canvas, BorderLayout.CENTER);
+        centro.add(scrollVista, BorderLayout.EAST);
+
+        panel.add(barra, BorderLayout.NORTH);
+        panel.add(centro, BorderLayout.CENTER);
+        panel.add(scrollLista, BorderLayout.SOUTH);
+
+        btnCrearScript.addActionListener(e -> {
+            ScriptEditorDialog dialog = new ScriptEditorDialog(this);
+            dialog.setVisible(true);
+            ScriptSprite nuevo = dialog.getResult();
+            if (nuevo != null) {
+                scripts.add(nuevo);
+                listModel.addElement(nuevo.getNombre());
+                listaScripts.setSelectedIndex(listModel.size() - 1);
+                canvas.setPixelData(nuevo.getPixels());
+                canvas.repaint();
+            }
+        });
+
+        btnEliminarScript.addActionListener(e -> {
+            int idx = listaScripts.getSelectedIndex();
+            if (idx == -1) {
+                JOptionPane.showMessageDialog(panel, "Selecciona un script de la lista.", "Eliminar script", JOptionPane.INFORMATION_MESSAGE);
+                return;
+            }
+            scripts.remove(idx);
+            listModel.remove(idx);
+            if (!scripts.isEmpty()) {
+                int nuevoIdx = Math.min(idx, scripts.size() - 1);
+                listaScripts.setSelectedIndex(nuevoIdx);
+                canvas.setPixelData(scripts.get(nuevoIdx).getPixels());
+            } else {
+                canvas.setPixelData(null);
+            }
+            canvas.repaint();
+        });
+
+        listaScripts.addListSelectionListener(e -> {
+            if (!e.getValueIsAdjusting()) {
+                int idx = listaScripts.getSelectedIndex();
+                if (idx >= 0 && idx < scripts.size()) {
+                    canvas.setPixelData(scripts.get(idx).getPixels());
+                } else {
+                    canvas.setPixelData(null);
+                }
+                canvas.repaint();
+            }
+        });
+
+        return panel;
+    }
+
+    private JPanel crearPanelAnimaciones() {
+        JPanel panel = new JPanel(new BorderLayout());
+        panel.setBorder(BorderFactory.createTitledBorder("Acciones aleatorias"));
 
         JTable tabla = new JTable(modeloTablaAcciones);
-        JScrollPane scrollTabla = new JScrollPane(tabla);
-        scrollTabla.setBorder(BorderFactory.createTitledBorder("Acciones disponibles"));
+        JScrollPane scroll = new JScrollPane(tabla);
 
-        panel.add(new JScrollPane(vistaScriptSeleccionado), BorderLayout.CENTER);
-        panel.add(scrollTabla, BorderLayout.SOUTH);
+        JPanel ayuda = new JPanel(new GridBagLayout());
+        GridBagConstraints gbc = new GridBagConstraints();
+        gbc.gridx = 0;
+        gbc.gridy = 0;
+        gbc.anchor = GridBagConstraints.WEST;
+        gbc.insets = new Insets(4, 4, 4, 4);
+
+        JLabel texto = new JLabel("<html>Aquí se mostrarán las acciones creadas.<br>Marca cuáles entran en el pool aleatorio y ajusta el peso.</html>");
+        texto.setFont(texto.getFont().deriveFont(Font.PLAIN, 11f));
+        ayuda.add(texto, gbc);
+
+        panel.add(scroll, BorderLayout.CENTER);
+        panel.add(ayuda, BorderLayout.SOUTH);
         return panel;
     }
 
@@ -423,6 +565,241 @@ public class MascotaEscritorioIDE extends JFrame {
             this.width = width;
             this.height = height;
             this.fillColor = fillColor;
+        }
+    }
+
+    private static class ScriptSprite {
+        private final String nombre;
+        private final Color[][] pixels;
+
+        ScriptSprite(String nombre, Color[][] pixels) {
+            this.nombre = nombre;
+            this.pixels = pixels;
+        }
+
+        String getNombre() {
+            return nombre;
+        }
+
+        Color[][] getPixels() {
+            return pixels;
+        }
+    }
+
+    private static class ScriptEditorDialog extends JDialog {
+        private JTextField txtNombre;
+        private PixelGridPanel gridPanel;
+        private Color currentColor = Color.BLACK;
+        private ScriptSprite result;
+
+        ScriptEditorDialog(JFrame owner) {
+            super(owner, "Nuevo script", true);
+            initUI();
+        }
+
+        private void initUI() {
+            setLayout(new BorderLayout(8, 8));
+
+            JPanel norte = new JPanel(new FlowLayout(FlowLayout.LEFT));
+            norte.add(new JLabel("Nombre del script:"));
+            txtNombre = new JTextField(20);
+            norte.add(txtNombre);
+            add(norte, BorderLayout.NORTH);
+
+            gridPanel = new PixelGridPanel(128, 128, 4);
+            gridPanel.setCurrentColor(currentColor);
+            JScrollPane scroll = new JScrollPane(gridPanel);
+            add(scroll, BorderLayout.CENTER);
+
+            JPanel sur = new JPanel(new BorderLayout());
+
+            JPanel panelColor = new JPanel(new FlowLayout(FlowLayout.LEFT));
+            JLabel lblColorActual = new JLabel("Color actual:");
+            JPanel muestraColor = new JPanel();
+            muestraColor.setPreferredSize(new Dimension(32, 32));
+            muestraColor.setBackground(currentColor);
+
+            JButton btnElegirColor = new JButton("Elegir color...");
+            JButton btnTransparente = new JButton("Borrador (transparente)");
+
+            panelColor.add(lblColorActual);
+            panelColor.add(muestraColor);
+            panelColor.add(btnElegirColor);
+            panelColor.add(btnTransparente);
+
+            sur.add(panelColor, BorderLayout.NORTH);
+
+            JPanel panelBotones = new JPanel(new FlowLayout(FlowLayout.RIGHT));
+            JButton btnGuardar = new JButton("Guardar");
+            JButton btnCancelar = new JButton("Cancelar");
+            panelBotones.add(btnGuardar);
+            panelBotones.add(btnCancelar);
+            sur.add(panelBotones, BorderLayout.SOUTH);
+
+            add(sur, BorderLayout.SOUTH);
+
+            btnElegirColor.addActionListener(e -> {
+                Color elegido = JColorChooser.showDialog(this, "Selecciona un color", currentColor);
+                if (elegido != null) {
+                    currentColor = elegido;
+                    muestraColor.setBackground(currentColor);
+                    gridPanel.setCurrentColor(currentColor);
+                }
+            });
+
+            btnTransparente.addActionListener(e -> {
+                currentColor = null;
+                muestraColor.setBackground(new Color(220, 220, 220));
+                gridPanel.setCurrentColor(null);
+            });
+
+            btnGuardar.addActionListener(e -> {
+                String nombre = txtNombre.getText().trim();
+                if (nombre.isEmpty()) {
+                    JOptionPane.showMessageDialog(this, "Debes ingresar un nombre para el script.", "Error", JOptionPane.WARNING_MESSAGE);
+                    return;
+                }
+                result = new ScriptSprite(nombre, gridPanel.getPixelsCopy());
+                dispose();
+            });
+            btnCancelar.addActionListener(e -> {
+                result = null;
+                dispose();
+            });
+
+            pack();
+            setSize(620, 520);
+            setLocationRelativeTo(getOwner());
+        }
+
+        ScriptSprite getResult() {
+            return result;
+        }
+    }
+
+    private static class PixelGridPanel extends JPanel {
+        private final int rows;
+        private final int cols;
+        private final int cellSize;
+        private final Color[][] pixels;
+        private Color currentColor;
+
+        PixelGridPanel(int rows, int cols, int cellSize) {
+            this.rows = rows;
+            this.cols = cols;
+            this.cellSize = cellSize;
+            this.pixels = new Color[rows][cols];
+            setPreferredSize(new Dimension(cols * cellSize, rows * cellSize));
+            setBackground(Color.WHITE);
+            setBorder(BorderFactory.createLineBorder(new Color(200, 200, 200)));
+
+            MouseAdapter mouse = new MouseAdapter() {
+                private boolean painting = false;
+
+                @Override
+                public void mousePressed(MouseEvent e) {
+                    painting = true;
+                    apply(e.getX(), e.getY());
+                }
+
+                @Override
+                public void mouseReleased(MouseEvent e) {
+                    painting = false;
+                }
+
+                @Override
+                public void mouseDragged(MouseEvent e) {
+                    if (painting) apply(e.getX(), e.getY());
+                }
+            };
+            addMouseListener(mouse);
+            addMouseMotionListener(mouse);
+        }
+
+        void setCurrentColor(Color color) {
+            this.currentColor = color;
+        }
+
+        private void apply(int x, int y) {
+            int c = x / cellSize;
+            int r = y / cellSize;
+            if (r >= 0 && r < rows && c >= 0 && c < cols) {
+                pixels[r][c] = currentColor;
+                repaint();
+            }
+        }
+
+        Color[][] getPixelsCopy() {
+            Color[][] copy = new Color[rows][cols];
+            for (int r = 0; r < rows; r++) {
+                System.arraycopy(pixels[r], 0, copy[r], 0, cols);
+            }
+            return copy;
+        }
+
+        @Override
+        protected void paintComponent(Graphics g) {
+            super.paintComponent(g);
+            for (int r = 0; r < rows; r++) {
+                for (int c = 0; c < cols; c++) {
+                    int x = c * cellSize;
+                    int y = r * cellSize;
+                    Color col = pixels[r][c];
+                    if (col != null) {
+                        g.setColor(col);
+                        g.fillRect(x, y, cellSize, cellSize);
+                    }
+                    g.setColor(new Color(230, 230, 230));
+                    g.drawRect(x, y, cellSize, cellSize);
+                }
+            }
+        }
+    }
+
+    private static class PreviewMascotaPanel extends JPanel {
+        private Color[][] pixels;
+
+        PreviewMascotaPanel() {
+            setBackground(new Color(250, 250, 250));
+            setBorder(BorderFactory.createLineBorder(new Color(200, 200, 200)));
+        }
+
+        void setPixelData(Color[][] pixels) {
+            this.pixels = pixels;
+        }
+
+        @Override
+        protected void paintComponent(Graphics g) {
+            super.paintComponent(g);
+            if (pixels == null) {
+                int size = 120;
+                int x = (getWidth() - size) / 2;
+                int y = (getHeight() - size) / 2;
+                g.setColor(new Color(255, 230, 180));
+                g.fillOval(x, y, size, size);
+                g.setColor(Color.DARK_GRAY);
+                g.drawOval(x, y, size, size);
+                int eyeRadius = size / 10;
+                int eyeY = y + size / 3;
+                int eyeXOffset = size / 4;
+                g.fillOval(x + eyeXOffset - eyeRadius / 2, eyeY, eyeRadius, eyeRadius);
+                g.fillOval(x + size - eyeXOffset - eyeRadius / 2, eyeY, eyeRadius, eyeRadius);
+                int mouthWidth = size / 2;
+                int mouthX = x + (size - mouthWidth) / 2;
+                int mouthY = y + size / 2 + size / 6;
+                g.drawArc(mouthX, mouthY, mouthWidth, size / 4, 0, -180);
+            } else {
+                int cellSize = Math.max(2, Math.min(getWidth() / Math.max(1, pixels[0].length), getHeight() / Math.max(1, pixels.length)));
+                for (int r = 0; r < pixels.length; r++) {
+                    for (int c = 0; c < pixels[r].length; c++) {
+                        Color col = pixels[r][c];
+                        if (col != null) {
+                            g.setColor(col);
+                            g.fillRect(c * cellSize, r * cellSize, cellSize, cellSize);
+                        }
+                    }
+                }
+            }
         }
     }
 
